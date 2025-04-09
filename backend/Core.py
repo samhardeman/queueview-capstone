@@ -25,6 +25,11 @@ class Location(Model):
     longitude = CharField()
     latitude = CharField()
     trafficLevel = CharField()
+    tags = CharField()
+    money = IntegerField(default=2)
+    quality = IntegerField(default=3)
+    turnaround = IntegerField(default=5)
+    stars = IntegerField(default=4)
     
     class Meta:
         database = db
@@ -41,6 +46,7 @@ class Camera(Model):
         database = db
 
 #db.create_tables([Location, Camera])
+#print("created tables")
     
 def populateLocationsAndCameras():
     with db.connection_context():
@@ -59,7 +65,12 @@ def populateLocationsAndCameras():
                                 building=building,
                                 latitude=latitude,
                                 longitude=longitude,
-                                trafficLevel='empty')
+                                trafficLevel='empty',
+                                tags='tags',
+                                money=2,
+                                quality=5,
+                                turnaround=10,
+                                stars=5)
                             
                 camera = Camera.create(cameraId=location['id'],
                                 name=location['description'],

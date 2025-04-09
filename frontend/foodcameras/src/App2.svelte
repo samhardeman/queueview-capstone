@@ -11,11 +11,19 @@
   let orderedHours = []; // Ordered hours for the current location
   let currentIsClosed = false;
 
+
   // Mobile-specific state
-  let isMobile = true; // Default to mobile view
+  let isMobile = false;
   let isLocationExpanded = false;
   let filtersExpanded = false;
-  let mapExpanded = true;
+
+  // Responsive detection
+  const checkMobile = () => {
+    isMobile = window.innerWidth <= 768;
+  };
+
+  // Sidebar mode: "list" shows all locations, "detail" shows one location's details.
+  let sidebarMode = 'list';
 
   // Filter variables:
   let filterOpenOnly = false;
@@ -26,14 +34,6 @@
   let minStars = 0;      // 0 means no star filtering.
   let minQuality = 0;    // 0 means no quality filtering.
   let maxTurnaround = 999; // Very high default so all locations show.
-
-  // Responsive detection
-  const checkMobile = () => {
-    isMobile = window.innerWidth <= 768;
-  };
-
-  // View modes: "map" shows map with horizontal locations bar, "detail" shows one location's details.
-  let viewMode = 'map';
 
   // Lazy loading for images
   const lazyLoadImage = (img) => {
@@ -182,7 +182,7 @@
         
         marker.on('click', () => {
           selectLocation(index);
-          viewMode = 'detail';
+          sidebarMode = 'detail';
         });
         
         markers.push(marker);
@@ -269,110 +269,65 @@
     selectedTags = new Set([...selectedTags]);
   }
 
-  // Toggle filters visibility
-  function toggleFilters() {
-    filtersExpanded = !filtersExpanded;
-  }
-
-  // Toggle map/location areas
-  function toggleMap() {
-    mapExpanded = !mapExpanded;
-  }
-
-  // Initialize map on mount and set up responsive handling
+  // Initialize map on mount
   onMount(() => {
-    // Set up responsive handling
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    // Set up the map
     map = L.map('map').setView([33.512950, -112.127405], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     fetchLocations();
-    
-    // Clean up event listener on component destroy
-    return () => {
-      window.removeEventListener('resize', checkMobile);
-    };
   });
-
-  // Re-adjust map size when filters or location list visibility changes
-  $: if (viewMode === 'map' && map) {
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
-}
 </script>
 
-<div class="mobile-container">
-  <!-- Filters Header -->
-  <div class="filters-header">
-    <button class="toggle-button" on:click={toggleFilters}>
-      {filtersExpanded ? '▲ Hide Filters' : '▼ Show Filters'}
-    </button>
-    {#if viewMode === 'detail'}
-      <button class="back-button" on:click={() => viewMode = 'map'}>
-        ← Back to Map
+<!-- Sidebar -->
+<div class="sidebar">
+  {#if sidebarMode === 'list'}
+    <!-- Filter UI -->
+    <div class="filters">
+      <button class="filter-button {filterOpenOnly ? 'active' : ''}" on:click={() => filterOpenOnly = !filterOpenOnly}>
+        {filterOpenOnly ? "Open Only" : "Show All"}
       </button>
-    {/if}
-  </div>
-
-  <!-- Collapsible Filters -->
-  {#if filtersExpanded}
-    <div class="filters-panel">
-      <div class="filter-row">
-        <button class="filter-button {filterOpenOnly ? 'active' : ''}" on:click={() => filterOpenOnly = !filterOpenOnly}>
-          {filterOpenOnly ? "Open Only" : "Show All"}
-        </button>
-        
-        <div class="busyness-filters">
-          {#each ["Empty", "Low", "Medium", "High"] as level}
-            <button
-              class="filter-button { !allowedLevels.has(level) ? 'active' : '' }"
-              on:click={() => {
-                if (allowedLevels.has(level)) {
-                  allowedLevels.delete(level);
-                } else {
-                  allowedLevels.add(level);
-                }
-                allowedLevels = new Set([...allowedLevels]);
-              }}>
-              {level}
-            </button>
-          {/each}
-        </div>
+      <div class="busyness-filters">
+        {#each ["Empty", "Low", "Medium", "High"] as level}
+          <button
+            class="filter-button { !allowedLevels.has(level) ? 'active' : '' }"
+            on:click={() => {
+              if (allowedLevels.has(level)) {
+                allowedLevels.delete(level);
+              } else {
+                allowedLevels.add(level);
+              }
+              allowedLevels = new Set([...allowedLevels]);
+            }}>
+            {level}
+          </button>
+        {/each}
       </div>
 
-      <!-- Tag filters with horizontal scroll -->
-      <div class="filter-row">
-        <label>Tags:</label>
-        <div class="tags-scroll">
-          {#each allTags as tag}
-            <button class="filter-button {selectedTags.has(tag) ? 'active' : ''}" on:click={() => toggleTag(tag)}>
-              {tag}
-            </button>
-          {/each}
+      <!-- Extra Filters -->
+      <div class="extra-filters">
+        <div class="filter-group">
+          <label>Tags:</label>
+          <div class="tags">
+            {#each allTags as tag}
+              <button class="filter-button {selectedTags.has(tag) ? 'active' : ''}" on:click={() => toggleTag(tag)}>
+                {tag}
+              </button>
+            {/each}
+          </div>
         </div>
-      </div>
-
-      <!-- Star rating filter -->
-      <div class="filter-row">
-        <label>Min Stars:</label>
-        <div class="star-selector">
-          {#each [1,2,3,4,5] as star}
-            <span 
-              class="star {star <= minStars ? 'selected' : ''}" 
-              on:click={() => minStars = star}>
-              ★
-            </span>
-          {/each}
-          <button class="reset-button" on:click={() => minStars = 0}>Reset</button>
+        <div class="filter-group">
+          <label>Min Stars:</label>
+          <div class="star-selector">
+            {#each [1,2,3,4,5] as star}
+              <span 
+                class="star {star <= minStars ? 'selected' : ''}" 
+                on:click={() => minStars = star}>
+                ★
+              </span>
+            {/each}
+            <button class="reset-button" on:click={() => minStars = 0}>Reset</button>
+          </div>
         </div>
-      </div>
-
-      <!-- Additional filters -->
-      <div class="filter-row">
-        <div class="filter-half">
+        <div class="filter-group">
           <label>Min Quality:</label>
           <select bind:value={minQuality}>
             <option value="0">All</option>
@@ -383,59 +338,50 @@
             <option value="5">5</option>
           </select>
         </div>
-        <div class="filter-half">
-          <label>Max Time (min):</label>
+        <div class="filter-group">
+          <label>Max Turnaround (min):</label>
           <input type="number" bind:value={maxTurnaround} min="1" max="999" />
         </div>
       </div>
     </div>
-  {/if}
 
-  {#if viewMode === 'map'}
-    <!-- Map container -->
-    <div id="map" class="map-container"></div>
-
-    <!-- Horizontal location slider -->
-    <div class="locations-slider">
+    <!-- List View -->
+    <div class="locations-list">
       {#each filteredLocations as loc}
-        <div class="location-card {loc.index === currentIndex ? 'selected' : ''}" 
-            on:click={() => selectLocation(loc.index)}>
-          <div class="location-name">{loc.name}</div>
-          <div class="location-status" style="color: {loc.isOpen ? 'green' : 'red'};">
-            {loc.isOpen ? 'Open' : 'Closed'}
+        <div class="location-entry {loc.index === currentIndex ? 'selected' : ''}" 
+             on:click={() => { selectLocation(loc.index); sidebarMode = 'detail'; }}>
+          <div class="dot">
+            {@html getIconHtml(loc.trafficLevel, !loc.isOpen, loc.index === currentIndex)}
           </div>
-          <button class="detail-button" on:click={() => { viewMode = 'detail'; }}>
-            Details
-          </button>
+          <div class="info">
+            <div class="name">{loc.name}</div>
+            <div class="status" style="color: {loc.isOpen ? 'green' : 'red'};">
+              {loc.isOpen ? 'Open' : 'Closed'}
+            </div>
+          </div>
         </div>
       {/each}
     </div>
-  {:else if viewMode === 'detail'}
-    <!-- Location detail view -->
+  {:else if sidebarMode === 'detail'}
+    <!-- Detail View -->
     <div class="detail-view">
+      <button class="back-arrow" on:click={() => sidebarMode = 'list'}>← Back</button>
       <h3 id="location-name">{locations[currentIndex]?.name || "Location"}</h3>
       <h5 id="traffic-level">
         {locations[currentIndex]?.trafficLevel || ""} - <span style="color: {currentIsClosed ? 'red' : 'green'};">{openStatus}</span>
       </h5>
-      
       {#if currentImage}
-        <img class="location-image" src={currentImage} alt="Location Image" />
+        <img class="sidebar-image" src={currentImage} alt="Location Image" />
       {/if}
-      
-      <div class="hours-box">
-        <h4>Hours</h4>
-        <div class="hours-grid">
-          {#each orderedHours as hr}
-            <div class="day">
-              <div class="day-name">{hr.day.substring(0, 3)}</div>
-              <div class="time">{formatHours(hr.open, hr.close)}</div>
-            </div>
-          {/each}
-        </div>
+      <div class="hours-column">
+        {#each orderedHours as hr}
+          <div class="day">
+            <div class="day-name">{hr.day}</div>
+            <div class="time">{formatHours(hr.open, hr.close)}</div>
+          </div>
+        {/each}
       </div>
-      
       <ActivityBar locationName={locations[currentIndex]?.name} />
-      
       <div class="buttons">
         <button on:click={() => selectLocation((currentIndex - 1 + locations.length) % locations.length)}>
           Previous
@@ -448,263 +394,177 @@
   {/if}
 </div>
 
+<!-- Map Container -->
+<div id="map" style="height: 100%;"></div>
+
 <style>
-  /* Mobile container */
-  .mobile-container {
-    width: 100vw;
+  /* Map container styling */
+  #map {
+    position: absolute;
+    top: 0;
+    left: 320px; /* Adjusted to account for sidebar width */
+    height: 100%;
+    width: calc(100% - 320px); /* Adjusted to account for sidebar width */
+    z-index: 0;
+  }
+  /* Sidebar styling */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 320px;
     height: 100vh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    overflow: hidden;
+    background: #fff;
+    border-right: 1px solid #522398;
+    padding: 20px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    z-index: 1;
+    overflow-y: auto;
     font-family: 'Arial', sans-serif;
   }
-
-  /* Filters header */
-  .filters-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: #522398;
-    color: white;
-    padding: 10px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .toggle-button, .back-button {
-    background: none;
-    border: none;
-    color: white;
-    font-weight: bold;
-    font-size: 14px;
-    padding: 5px 10px;
-    cursor: pointer;
-  }
-
-  /* Collapsible filters panel */
-  .filters-panel {
-    background-color: #fff;
-    padding: 10px;
-    border-bottom: 1px solid #ccc;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    z-index: 5;
-  }
-
-  .filter-row {
-    margin-bottom: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .filter-row label {
-    font-weight: bold;
-    margin-right: 5px;
+  /* Rest of the styles remain the same as in the previous artifact */
+  .sidebar h3, .sidebar h5 {
+    margin: 0;
+    padding-bottom: 10px;
     color: #522398;
   }
-
-  .tags-scroll {
+  .sidebar-image {
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border: 2px solid #522398;
+  }
+  /* Filters styling */
+  .filters {
     display: flex;
-    overflow-x: auto;
-    padding: 5px 0;
-    gap: 5px;
-    scrollbar-width: thin;
+    flex-direction: column;
+    margin-bottom: 10px;
   }
-
-  .filter-half {
-    flex: 1;
+  .busyness-filters, .extra-filters .tags {
     display: flex;
-    align-items: center;
     gap: 5px;
+    margin-top: 5px;
+    flex-wrap: wrap;
   }
-
-  .filter-half input, .filter-half select {
-    flex: 1;
-    padding: 5px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
+  .extra-filters {
+    margin-top: 10px;
   }
-
-  /* Filter buttons */
+  .filter-group {
+    margin-bottom: 10px;
+  }
+  .filter-group label {
+    font-weight: bold;
+    margin-right: 5px;
+    color: #000000;
+  }
   .filter-button {
     padding: 5px 10px;
     background-color: #ffffff;
     color: #000000;
-    border: 1px solid #522398;
+    border: 2px solid;
     border-radius: 50px;
     cursor: pointer;
-    font-size: 12px;
-    white-space: nowrap;
+    font-size: 14px;
+    font-weight: bold;
   }
-
   .filter-button.active {
     background-color: #998cad;
-    color: white;
   }
-
-  /* Star selector */
+  /* Star selector styling */
   .star-selector {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
   }
-
   .star {
-    font-size: 18px;
+    font-size: 20px;
     cursor: pointer;
     color: #ccc;
+    transition: color 0.2s;
   }
-
+  .star:hover,
   .star.selected {
     color: gold;
   }
-
   .reset-button {
     background: none;
     border: none;
     color: #522398;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 14px;
     padding: 0 5px;
   }
-
-  /* Map container */
-  .map-container {
-    flex: 1;
-    width: 100%;
-    z-index: 0;
+  /* Locations list styling */
+  .locations-list {
+    height: 70vh;
+    overflow-y: auto;
   }
-
-  /* Horizontal location slider */
-  .locations-slider {
+  .location-entry {
     display: flex;
-    width: 100%;
-    overflow-x: auto;
-    background-color: rgba(255, 255, 255, 0.9);
-    padding: 10px;
-    gap: 10px;
-    height: 120px;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-    scrollbar-width: thin;
-    scroll-snap-type: inline mandatory;
-  }
-
-  .location-card {
-    flex: 0 0 auto;
-    width: 100%;
-    background: white;
-    border-radius: 10px;
-    padding: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #ccc;
     cursor: pointer;
-    border: 1px solid #ccc;
-    scroll-snap-align: center;
   }
-
-  .location-card.selected {
-    border: 2px solid #522398;
+  .location-entry.selected {
     background-color: #f0f0f0;
   }
-
-  .dot-container {
-    margin-bottom: 5px;
+  .location-entry:hover {
+    background-color: #e0e0e0;
   }
-
-  .location-name {
+  .dot {
+    margin-right: 10px;
+  }
+  .info {
+    display: flex;
+    flex-direction: column;
+  }
+  .name {
     font-weight: bold;
     color: #522398;
-    text-align: center;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
   }
-
-  .location-status {
+  .status {
     font-size: 12px;
-    margin-bottom: 5px;
   }
-
-  .detail-button {
-    background-color: #522398;
-    color: white;
+  /* Detail view back arrow */
+  .back-arrow {
+    background: none;
     border: none;
-    border-radius: 50px;
-    padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    width: 100%;
-  }
-
-  /* Detail view */
-  .detail-view {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 15px;
-    background-color: white;
-  }
-
-  .detail-view h3, .detail-view h4, .detail-view h5 {
-    margin: 5px 0;
     color: #522398;
+    font-size: 18px;
+    margin-bottom: 10px;
+    cursor: pointer;
   }
-
-  .location-image {
-    width: 100%;
-    max-height: 200px;
-    object-fit: cover;
-    border-radius: 8px;
-    margin: 10px 0;
-    border: 2px solid #522398;
-  }
-
-  .hours-box {
-    background-color: #f5f5f5;
-    border-radius: 8px;
-    padding: 10px;
+  /* Hours column styling */
+  .hours-column {
+    display: flex;
+    flex-direction: column;
     margin-bottom: 15px;
   }
-
-  .hours-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 5px;
-  }
-
-  .day {
+  .hours-column .day {
+    margin-bottom: 5px;
+    text-align: left;
     font-size: 12px;
     color: #522398;
   }
-
-  .day-name {
+  .hours-column .day .day-name {
     font-weight: bold;
   }
-
-  .time {
+  .hours-column .day .time {
     font-size: 10px;
   }
-
-  /* Navigation buttons */
+  /* Buttons styling */
   .buttons {
     display: flex;
     justify-content: space-between;
-    margin: 15px 0;
-    gap: 10px;
+    margin-top: 15px;
   }
-
   .buttons button {
     flex: 1;
+    margin: 0 5px;
     padding: 10px;
     background: #522398;
     color: #fff;
@@ -715,56 +575,11 @@
     font-weight: bold;
     box-shadow: 0 2px 5px rgba(0,0,0,0.3);
   }
-
-  /* Custom Leaflet icons */
+  .buttons button:hover {
+    background: #3e187b;
+  }
   .custom-icon {
     display: flex;
     align-items: center;
   }
-
-  /* Responsive adjustments */
-  @media (max-height: 600px) {
-    .locations-slider {
-      height: 100px;
-    }
-    
-    .location-card {
-      width: 100px;
-      padding: 5px;
-    }
-  }
-
-  @media (min-aspect-ratio: 4/3) {
-  .mobile-container {
-    flex-direction: row;
-  }
-
-  .filters-panel {
-    width: 300px;
-    height: 100vh;
-    position: relative;
-    overflow-y: auto;
-    border-right: 1px solid #ccc;
-  }
-
-  .map-container {
-    flex: 1;
-    height: 100vh;
-  }
-
-  .locations-slider {
-    position: static;
-    height: auto;
-    flex-direction: column;
-    overflow-y: auto;
-    width: 300px;
-    border-right: 1px solid #ccc;
-  }
-
-  .detail-view {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-  }
-}
 </style>
