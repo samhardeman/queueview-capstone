@@ -3,128 +3,116 @@
   import L from 'leaflet';
   import "leaflet/dist/leaflet.css";
   import ActivityBar from './lib/ActivityBar.svelte';
+  import LocationCard from './lib/LocationCard.svelte';
+  import LocationDetails from './lib/LocationDetails.svelte';
+  import FilterPanel from './lib/FilterPanel.svelte';
+  import MapView from './lib/MapView.svelte';
+  import TagMenu from './lib/TagMenu.svelte';
+  import BusynessIndicator from './lib/BusynessIndicator.svelte';
 
+  // State for locations and filtering
   let map;
-  let locations = []; // Minimal list loaded from /api/locations
-  let currentIndex = 0;
-  let currentImage = "";
-  let orderedHours = []; // Ordered hours for the current location
-  let currentIsClosed = false;
+  let locations = [];
+  let filteredLocations = [];
+  let selectedLocation = null;
+  let selectedLocationIndex = 0;
+  let isDetailsOpen = false;
+  let isTagMenuOpen = false;
+  let isLoading = true;
+  let markers = [];
 
   // Mobile-specific state
-  let isMobile = true; // Default to mobile view
-  let isLocationExpanded = false;
-  let filtersExpanded = false;
-  let mapExpanded = true;
+  let isMobile = false;
+  let isFiltersExpanded = true;
+  let isLocationsExpanded = true;
 
-  // Filter variables:
+  // Filter variables
   let filterOpenOnly = false;
   let allowedLevels = new Set(["Empty", "Low", "Medium", "High"]);
-
-  // New filter variables:
   let selectedTags = new Set();
-  let minStars = 0;      // 0 means no star filtering.
-  let minQuality = 0;    // 0 means no quality filtering.
-  let maxTurnaround = 999; // Very high default so all locations show.
+  let minStars = 0;
+  let minQuality = 0;
+  let maxTurnaround = 999;
 
-  // Responsive detection
-  const checkMobile = () => {
-    isMobile = window.innerWidth <= 768;
-  };
-
-  // View modes: "map" shows map with horizontal locations bar, "detail" shows one location's details.
-  let viewMode = 'map';
-
-  // Lazy loading for images
-  const lazyLoadImage = (img) => {
-    const src = img.dataset.src;
-    if (src) {
-      img.src = src;
-      img.removeAttribute('data-src');
-    }
-  };
-
-  // Reactive: compute all unique tags from locations.
+  // Compute all unique tags from locations
   $: allTags = Array.from(
     new Set(locations.flatMap(loc => loc.tags.split(',').map(t => t.trim())))
   );
 
-  // Reactive: compute filtered locations including original index.
-  $: filteredLocations = locations
-    .map((loc, index) => ({ ...loc, index }))
-    .filter(loc => {
-      const meetsOpen = !filterOpenOnly || loc.isOpen;
-      const meetsBusyness = allowedLevels.has(loc.trafficLevel);
-      const locTags = loc.tags.split(',').map(t => t.trim());
-      const meetsTags =
-        selectedTags.size === 0 ||
-        locTags.some(tag => selectedTags.has(tag));
-      const meetsStars = loc.stars >= minStars;
-      const meetsQuality = loc.quality >= minQuality;
-      const meetsTurnaround = loc.turnaround <= maxTurnaround;
-      return meetsOpen && meetsBusyness && meetsTags && meetsStars && meetsQuality && meetsTurnaround;
-    });
-
-  // Array to store each location's marker.
-  let markers = [];
-
-  // Reactive open status text.
-  $: openStatus = currentIsClosed ? 'Closed' : 'Open';
-
-  // Cache to store detailed data fetched from /api/location/[name]
-  let locationDetailsCache = {};
-
-  // Helper: convert a "HH:MM" string (24-hour) to 12-hour format.
-  function formatTime(timeStr) {
-    let [hour, minute] = timeStr.split(':').map(Number);
-    let ampm = hour >= 12 ? 'PM' : 'AM';
-    hour = hour % 12;
-    if (hour === 0) hour = 12;
-    return `${hour}:${minute.toString().padStart(2, '0')} ${ampm}`;
-  }
-
-  // Helper: if open and close are "00:00", return "Closed", otherwise format them.
-  function formatHours(open, close) {
-    if (open === "00:00" && close === "00:00") return "Closed";
-    return `${formatTime(open)} - ${formatTime(close)}`;
-  }
-
-  // Helper: determine if a location is currently open based on its hours data.
-  function isOpenNow(hoursData) {
-    const currentDay = new Date().toLocaleString('en-US', { weekday: 'long' });
-    const todaysHours = hoursData[currentDay];
-    if (!todaysHours || (todaysHours.open === "00:00" && todaysHours.close === "00:00")) {
-      return false;
+  // Filter locations based on current filter settings
+  $: {
+    filteredLocations = locations
+      .map((loc, index) => ({ ...loc, originalIndex: index }))
+      .filter(loc => {
+        const meetsOpen = !filterOpenOnly || loc.isOpen;
+        const meetsBusyness = allowedLevels.has(loc.trafficLevel);
+        const locTags = loc.tags.split(',').map(t => t.trim());
+        const meetsTags =
+          selectedTags.size === 0 ||
+          locTags.some(tag => selectedTags.has(tag));
+        const meetsStars = loc.stars >= minStars;
+        const meetsQuality = loc.quality >= minQuality;
+        const meetsTurnaround = loc.turnaround <= maxTurnaround;
+        return meetsOpen && meetsBusyness && meetsTags && meetsStars && meetsQuality && meetsTurnaround;
+      });
+    
+    if (map && markers.length > 0) {
+      updateMarkerOpacity();
     }
-    let now = new Date();
-    let currentMinutes = now.getHours() * 60 + now.getMinutes();
-    let [openHour, openMinute] = todaysHours.open.split(':').map(Number);
-    let [closeHour, closeMinute] = todaysHours.close.split(':').map(Number);
-    let openMinutes = openHour * 60 + openMinute;
-    let closeMinutes = closeHour * 60 + closeMinute;
-    return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
   }
 
-  // Returns HTML for a marker icon.
-  const getIconHtml = (level, closed = false, selected = false) => {
-    let bg;
+  // Update marker opacity based on filtered status
+  function updateMarkerOpacity() {
+    const filteredIndices = new Set(filteredLocations.map(loc => loc.originalIndex));
+    
+    locations.forEach((loc, index) => {
+      if (markers[index]) {
+        const markerElement = markers[index].getElement();
+        if (markerElement) {
+          if (filteredIndices.has(index)) {
+            markerElement.style.opacity = "1";
+          } else {
+            markerElement.style.opacity = "0.4";
+          }
+        }
+      }
+    });
+  }
+
+  // Check for mobile/desktop based on screen width
+  function checkMobile() {
+    isMobile = window.innerWidth <= 768;
+    
+    // Set default states based on device
+    if (!isMobile) {
+      isFiltersExpanded = true;
+      isLocationsExpanded = true;
+    }
+  }
+
+  // Generate HTML for marker icons
+  function getMarkerHtml(level, closed = false, selected = false) {
+    let bgColor;
+    
     if (closed) {
-      bg = "#9E9E9E";
+      bgColor = "#9E9E9E";
     } else {
       if (level === "Empty" || level === "Low") {
-        bg = "#00C851";
+        bgColor = "#00C851";
       } else if (level === "Medium") {
-        bg = "#FFEB3B";
+        bgColor = "#FFEB3B";
       } else if (level === "High") {
-        bg = "#ff4444";
+        bgColor = "#ff4444";
       } else {
-        bg = "#9E9E9E";
+        bgColor = "#9E9E9E";
       }
     }
+    
     const borderRadius = selected ? "0" : "50%";
     const transform = selected ? "rotate(45deg)" : "";
+    
     return `<div style="
-      background-color: ${bg};
+      background-color: ${bgColor};
       border: 2px solid #000;
       border-radius: ${borderRadius};
       width: 16px;
@@ -132,134 +120,72 @@
       transform: ${transform};
       box-shadow: 0 0 8px rgba(0,0,0,0.6);
     "></div>`;
-  };
+  }
 
-  // Pre-fetch hours for all locations so we can mark them as open or closed.
-  const prefetchAllHours = async () => {
-    await Promise.all(locations.map(async loc => {
-      try {
-        const res = await fetch(`http://localhost:5000/api/hours/${loc.name}`);
-        const hoursData = await res.json();
-        loc.hoursData = hoursData;
-        loc.isOpen = isOpenNow(hoursData);
-      } catch (error) {
-        console.error("Error fetching hours for", loc.name, error);
-        loc.isOpen = false;
-      }
-    }));
-  };
-
-  // Fetch the minimal list of locations.
-  const fetchLocations = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/locations');
-      locations = await response.json();
-      if (locations.length) {
-        await prefetchAllHours();
-        await initializeMarkers();
-        // Automatically select the first location.
-        await selectLocation(0);
-      }
-    } catch (error) {
-      console.error("Error fetching locations:", error);
+  // Select a location to view details
+  function selectLocation(location, index) {
+    selectedLocation = location;
+    selectedLocationIndex = index;
+    isDetailsOpen = true;
+    
+    if (isMobile) {
+      isFiltersExpanded = false;
+      isLocationsExpanded = false;
     }
-  };
-
-  // Initialize markers for all locations
-  const initializeMarkers = () => {
-    // Clear existing markers if any
-    markers.forEach(marker => map.removeLayer(marker));
-    markers = [];
-
-    locations.forEach((loc, index) => {
-      if (loc.latitude && loc.longitude) {
-        const marker = L.marker([loc.latitude, loc.longitude], {
-          icon: L.divIcon({
-            className: 'custom-icon',
-            html: getIconHtml(loc.trafficLevel, !loc.isOpen, index === currentIndex)
-          })
-        }).addTo(map);
-        
-        marker.on('click', () => {
-          selectLocation(index);
-          viewMode = 'detail';
-        });
-        
-        markers.push(marker);
-      }
-    });
-  };
-
-  // Fetch detailed data (including image) for a given location.
-  const fetchLocationDetails = async (name) => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/location/${name}`);
-      return await response.json();
-    } catch (error) {
-      console.error(`Error fetching details for ${name}:`, error);
-      return null;
+    
+    // Center the map on the selected location
+    if (map && location.latitude && location.longitude) {
+      map.setView([location.latitude, location.longitude], 18);
     }
-  };
+    
+    // Update markers to show which one is selected
+    updateMarkers();
+  }
 
-  // Update the current image URL.
-  const updateCurrentImage = (image) => {
-    currentImage = `http://localhost:5000/api/image/${image}`;
-  };
-
-  // Fetch hours data for the selected location (for the sidebar).
-  const fetchHoursDataForSidebar = async (name) => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/hours/${name}`);
-      const data = await response.json();
-      const weekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-      const currentDay = new Date().toLocaleString('en-US', { weekday: 'long' });
-      let idx = weekDays.indexOf(currentDay);
-      if (idx === -1) idx = 0;
-      const orderedDays = weekDays.slice(idx).concat(weekDays.slice(0, idx));
-      orderedHours = orderedDays.map(day => ({ day, open: data[day]?.open, close: data[day]?.close }));
-      const todaysHours = data[currentDay];
-      if (!todaysHours || (todaysHours.open === "00:00" && todaysHours.close === "00:00")) {
-        currentIsClosed = true;
-      } else {
-        currentIsClosed = !isOpenNow(data);
-      }
-    } catch (error) {
-      console.error("Error fetching hours data for sidebar:", error);
-    }
-  };
-
-  // Update the icons for all markers based on the current selection.
-  function updateMarkersIcons() {
-    locations.forEach((loc, i) => {
-      const marker = markers[i];
+  // Update markers appearance
+  function updateMarkers() {
+    if (!map || markers.length === 0) return;
+    
+    markers.forEach((marker, index) => {
+      const isSelected = index === selectedLocationIndex;
+      const isFiltered = filteredLocations.some(loc => loc.originalIndex === index);
+      const opacity = isFiltered ? "1" : "0.4";
+      
+      // Update marker appearance
       marker.setIcon(L.divIcon({
-        className: 'custom-icon',
-        html: getIconHtml(loc.trafficLevel, !loc.isOpen, i === currentIndex)
+        className: 'custom-marker',
+        html: getMarkerHtml(locations[index].trafficLevel, !locations[index].isOpen, isSelected),
       }));
+      
+      marker.getElement().style.opacity = opacity;
     });
   }
 
-  // When a location is selected, update markers, fetch details, and center the map.
-  const selectLocation = async (index) => {
-    currentIndex = index;
-    const loc = locations[index];
+  // Toggle filters panel
+  function toggleFilters() {
+    isFiltersExpanded = !isFiltersExpanded;
+  }
 
-    if (loc.latitude && loc.longitude) {
-      map.setView([loc.latitude, loc.longitude], 20);
-    }
+  // Toggle locations panel
+  function toggleLocations() {
+    isLocationsExpanded = !isLocationsExpanded;
+  }
 
-    if (!locationDetailsCache[loc.name]) {
-      locationDetailsCache[loc.name] = await fetchLocationDetails(loc.name);
-    }
-    const details = locationDetailsCache[loc.name];
-    if (details && details[0].image) {
-      updateCurrentImage(details[0].image);
-    }
-    await fetchHoursDataForSidebar(loc.name);
-    updateMarkersIcons();
-  };
+  // Toggle tag menu
+  function toggleTagMenu() {
+    isTagMenuOpen = !isTagMenuOpen;
+  }
 
-  // Toggle a tag filter.
+  // Close details view
+  function closeDetails() {
+    isDetailsOpen = false;
+    
+    if (isMobile) {
+      isLocationsExpanded = true;
+    }
+  }
+
+  // Toggle a tag in the filter
   function toggleTag(tag) {
     if (selectedTags.has(tag)) {
       selectedTags.delete(tag);
@@ -269,25 +195,60 @@
     selectedTags = new Set([...selectedTags]);
   }
 
-  // Toggle filters visibility
-  function toggleFilters() {
-    filtersExpanded = !filtersExpanded;
+  // Check if a location is currently open
+  function isOpenNow(hoursData) {
+    const currentDay = new Date().toLocaleString('en-US', { weekday: 'long' });
+    const todaysHours = hoursData[currentDay];
+    
+    if (!todaysHours || (todaysHours.open === "00:00" && todaysHours.close === "00:00")) {
+      return false;
+    }
+    
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    const [openHour, openMinute] = todaysHours.open.split(':').map(Number);
+    const [closeHour, closeMinute] = todaysHours.close.split(':').map(Number);
+    
+    const openMinutes = openHour * 60 + openMinute;
+    const closeMinutes = closeHour * 60 + closeMinute;
+    
+    return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
   }
 
-  // Toggle map/location areas
-  function toggleMap() {
-    mapExpanded = !mapExpanded;
+  // Fetch locations from API
+  async function fetchLocations() {
+    try {
+      const response = await fetch('http://localhost:5000/api/locations');
+      locations = await response.json();
+      
+      // Pre-fetch hours data for all locations
+      await Promise.all(locations.map(async (loc, index) => {
+        try {
+          const res = await fetch(`http://localhost:5000/api/hours/${loc.name}`);
+          const hoursData = await res.json();
+          loc.hoursData = hoursData;
+          loc.isOpen = isOpenNow(hoursData);
+        } catch (error) {
+          console.error("Error fetching hours for", loc.name, error);
+          loc.isOpen = false;
+        }
+      }));
+      
+      isLoading = false;
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      isLoading = false;
+    }
   }
 
-  // Initialize map on mount and set up responsive handling
+  // Initialize app on mount
   onMount(() => {
     // Set up responsive handling
     checkMobile();
     window.addEventListener('resize', checkMobile);
     
-    // Set up the map
-    map = L.map('map').setView([33.512950, -112.127405], 17);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // Fetch locations
     fetchLocations();
     
     // Clean up event listener on component destroy
@@ -295,476 +256,213 @@
       window.removeEventListener('resize', checkMobile);
     };
   });
-
-  // Re-adjust map size when filters or location list visibility changes
-  $: if (viewMode === 'map' && map) {
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
-}
 </script>
 
-<div class="mobile-container">
-  <!-- Filters Header -->
-  <div class="filters-header">
-    <button class="toggle-button" on:click={toggleFilters}>
-      {filtersExpanded ? '▲ Hide Filters' : '▼ Show Filters'}
-    </button>
-    {#if viewMode === 'detail'}
-      <button class="back-button" on:click={() => viewMode = 'map'}>
-        ← Back to Map
-      </button>
+<svelte:head>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</svelte:head>
+
+<main class={isMobile ? 'mobile-layout' : 'desktop-layout'}>
+  <!-- Left sidebar for desktop, collapsible panels for mobile -->
+  <div class="sidebar" class:expanded={isFiltersExpanded || isLocationsExpanded}>
+    <!-- Filters toggle for mobile -->
+    {#if isMobile}
+      <div class="mobile-toggles">
+        <button class="toggle-button" on:click={toggleFilters}>
+          {isFiltersExpanded ? '▲ Hide Filters' : '▼ Show Filters'}
+        </button>
+        <button class="toggle-button" on:click={toggleLocations}>
+          {isLocationsExpanded ? '▲ Hide Locations' : '▼ Show Locations'}
+        </button>
+      </div>
+    {/if}
+    
+    <!-- Filters panel -->
+    {#if isFiltersExpanded}
+      <FilterPanel 
+        bind:filterOpenOnly 
+        bind:allowedLevels 
+        bind:minStars 
+        bind:minQuality 
+        bind:maxTurnaround 
+        allTags={allTags} 
+        bind:selectedTags 
+        {toggleTag}
+        {toggleTagMenu}
+        isTagMenuOpen={isTagMenuOpen}
+      />
+    {/if}
+    
+    <!-- Tag menu overlay -->
+    {#if isTagMenuOpen}
+      <TagMenu 
+        allTags={allTags} 
+        bind:selectedTags 
+        {toggleTag} 
+        close={() => isTagMenuOpen = false}
+      />
+    {/if}
+    
+    <!-- Locations list -->
+    {#if isLocationsExpanded}
+      <div class="locations-list">
+        <h2>Locations {filteredLocations.length}/{locations.length}</h2>
+        {#if filteredLocations.length === 0 && !isLoading}
+          <p class="no-results">No locations match your filters</p>
+        {:else if isLoading}
+          <p class="loading">Loading locations...</p>
+        {:else}
+          {#each filteredLocations as location, index (location.name)}
+            <LocationCard 
+              location={location} 
+              isSelected={selectedLocation && selectedLocation.name === location.name}
+              onClick={() => selectLocation(location, location.originalIndex)}
+            />
+          {/each}
+        {/if}
+      </div>
     {/if}
   </div>
-
-  <!-- Collapsible Filters -->
-  {#if filtersExpanded}
-    <div class="filters-panel">
-      <div class="filter-row">
-        <button class="filter-button {filterOpenOnly ? 'active' : ''}" on:click={() => filterOpenOnly = !filterOpenOnly}>
-          {filterOpenOnly ? "Open Only" : "Show All"}
-        </button>
-        
-        <div class="busyness-filters">
-          {#each ["Empty", "Low", "Medium", "High"] as level}
-            <button
-              class="filter-button { !allowedLevels.has(level) ? 'active' : '' }"
-              on:click={() => {
-                if (allowedLevels.has(level)) {
-                  allowedLevels.delete(level);
-                } else {
-                  allowedLevels.add(level);
-                }
-                allowedLevels = new Set([...allowedLevels]);
-              }}>
-              {level}
-            </button>
-          {/each}
-        </div>
-      </div>
-
-      <!-- Tag filters with horizontal scroll -->
-      <div class="filter-row">
-        <label>Tags:</label>
-        <div class="tags-scroll">
-          {#each allTags as tag}
-            <button class="filter-button {selectedTags.has(tag) ? 'active' : ''}" on:click={() => toggleTag(tag)}>
-              {tag}
-            </button>
-          {/each}
-        </div>
-      </div>
-
-      <!-- Star rating filter -->
-      <div class="filter-row">
-        <label>Min Stars:</label>
-        <div class="star-selector">
-          {#each [1,2,3,4,5] as star}
-            <span 
-              class="star {star <= minStars ? 'selected' : ''}" 
-              on:click={() => minStars = star}>
-              ★
-            </span>
-          {/each}
-          <button class="reset-button" on:click={() => minStars = 0}>Reset</button>
-        </div>
-      </div>
-
-      <!-- Additional filters -->
-      <div class="filter-row">
-        <div class="filter-half">
-          <label>Min Quality:</label>
-          <select bind:value={minQuality}>
-            <option value="0">All</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
-        </div>
-        <div class="filter-half">
-          <label>Max Time (min):</label>
-          <input type="number" bind:value={maxTurnaround} min="1" max="999" />
-        </div>
-      </div>
-    </div>
+  
+  <!-- Map area -->
+  <div class="map-container" class:with-details={isDetailsOpen && !isMobile}>
+    <MapView 
+      bind:map 
+      bind:markers 
+      locations={locations}
+      filteredLocations={filteredLocations}
+      selectedLocationIndex={selectedLocationIndex}
+      onMarkerClick={(location, index) => selectLocation(location, index)}
+      getMarkerHtml={getMarkerHtml}
+    />
+  </div>
+  
+  <!-- Location details panel (overlay for desktop, full screen for mobile) -->
+  {#if isDetailsOpen && selectedLocation}
+    <LocationDetails 
+      location={selectedLocation} 
+      isMobile={isMobile} 
+      onClose={closeDetails}
+    />
   {/if}
-
-  {#if viewMode === 'map'}
-    <!-- Map container -->
-    <div id="map" class="map-container"></div>
-
-    <!-- Horizontal location slider -->
-    <div class="locations-slider">
-      {#each filteredLocations as loc}
-        <div class="location-card {loc.index === currentIndex ? 'selected' : ''}" 
-            on:click={() => selectLocation(loc.index)}>
-          <div class="location-name">{loc.name}</div>
-          <div class="location-status" style="color: {loc.isOpen ? 'green' : 'red'};">
-            {loc.isOpen ? 'Open' : 'Closed'}
-          </div>
-          <button class="detail-button" on:click={() => { viewMode = 'detail'; }}>
-            Details
-          </button>
-        </div>
-      {/each}
-    </div>
-  {:else if viewMode === 'detail'}
-    <!-- Location detail view -->
-    <div class="detail-view">
-      <h3 id="location-name">{locations[currentIndex]?.name || "Location"}</h3>
-      <h5 id="traffic-level">
-        {locations[currentIndex]?.trafficLevel || ""} - <span style="color: {currentIsClosed ? 'red' : 'green'};">{openStatus}</span>
-      </h5>
-      
-      {#if currentImage}
-        <img class="location-image" src={currentImage} alt="Location Image" />
-      {/if}
-      
-      <div class="hours-box">
-        <h4>Hours</h4>
-        <div class="hours-grid">
-          {#each orderedHours as hr}
-            <div class="day">
-              <div class="day-name">{hr.day.substring(0, 3)}</div>
-              <div class="time">{formatHours(hr.open, hr.close)}</div>
-            </div>
-          {/each}
-        </div>
-      </div>
-      
-      <ActivityBar locationName={locations[currentIndex]?.name} />
-      
-      <div class="buttons">
-        <button on:click={() => selectLocation((currentIndex - 1 + locations.length) % locations.length)}>
-          Previous
-        </button>
-        <button on:click={() => selectLocation((currentIndex + 1) % locations.length)}>
-          Next
-        </button>
-      </div>
-    </div>
-  {/if}
-</div>
+</main>
 
 <style>
-  /* Mobile container */
-  .mobile-container {
-    width: 100vw;
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif;
+    overflow: hidden;
     height: 100vh;
+  }
+  
+  main {
     display: flex;
-    flex-direction: column;
-    position: relative;
+    height: 100vh;
+    width: 100vw;
     overflow: hidden;
-    font-family: 'Arial', sans-serif;
   }
-
-  /* Filters header */
-  .filters-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: #522398;
-    color: white;
-    padding: 10px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .toggle-button, .back-button {
-    background: none;
-    border: none;
-    color: white;
-    font-weight: bold;
-    font-size: 14px;
-    padding: 5px 10px;
-    cursor: pointer;
-  }
-
-  /* Collapsible filters panel */
-  .filters-panel {
-    background-color: #fff;
-    padding: 10px;
-    border-bottom: 1px solid #ccc;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    z-index: 5;
-  }
-
-  .filter-row {
-    margin-bottom: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .filter-row label {
-    font-weight: bold;
-    margin-right: 5px;
-    color: #522398;
-  }
-
-  .tags-scroll {
-    display: flex;
-    overflow-x: auto;
-    padding: 5px 0;
-    gap: 5px;
-    scrollbar-width: thin;
-  }
-
-  .filter-half {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .filter-half input, .filter-half select {
-    flex: 1;
-    padding: 5px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-  }
-
-  /* Filter buttons */
-  .filter-button {
-    padding: 5px 10px;
-    background-color: #ffffff;
-    color: #000000;
-    border: 1px solid #522398;
-    border-radius: 50px;
-    cursor: pointer;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-
-  .filter-button.active {
-    background-color: #998cad;
-    color: white;
-  }
-
-  /* Star selector */
-  .star-selector {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-
-  .star {
-    font-size: 18px;
-    cursor: pointer;
-    color: #ccc;
-  }
-
-  .star.selected {
-    color: gold;
-  }
-
-  .reset-button {
-    background: none;
-    border: none;
-    color: #522398;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 0 5px;
-  }
-
-  /* Map container */
-  .map-container {
-    flex: 1;
-    width: 100%;
-    z-index: 0;
-  }
-
-  /* Horizontal location slider */
-  .locations-slider {
-    display: flex;
-    width: 100%;
-    overflow-x: auto;
-    background-color: rgba(255, 255, 255, 0.9);
-    padding: 10px;
-    gap: 10px;
-    height: 120px;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-    scrollbar-width: thin;
-    scroll-snap-type: inline mandatory;
-  }
-
-  .location-card {
-    flex: 0 0 auto;
-    width: 100%;
-    background: white;
-    border-radius: 10px;
-    padding: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    border: 1px solid #ccc;
-    scroll-snap-align: center;
-  }
-
-  .location-card.selected {
-    border: 2px solid #522398;
-    background-color: #f0f0f0;
-  }
-
-  .dot-container {
-    margin-bottom: 5px;
-  }
-
-  .location-name {
-    font-weight: bold;
-    color: #522398;
-    text-align: center;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-  }
-
-  .location-status {
-    font-size: 12px;
-    margin-bottom: 5px;
-  }
-
-  .detail-button {
-    background-color: #522398;
-    color: white;
-    border: none;
-    border-radius: 50px;
-    padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    width: 100%;
-  }
-
-  /* Detail view */
-  .detail-view {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 15px;
-    background-color: white;
-  }
-
-  .detail-view h3, .detail-view h4, .detail-view h5 {
-    margin: 5px 0;
-    color: #522398;
-  }
-
-  .location-image {
-    width: 100%;
-    max-height: 200px;
-    object-fit: cover;
-    border-radius: 8px;
-    margin: 10px 0;
-    border: 2px solid #522398;
-  }
-
-  .hours-box {
-    background-color: #f5f5f5;
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 15px;
-  }
-
-  .hours-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 5px;
-  }
-
-  .day {
-    font-size: 12px;
-    color: #522398;
-  }
-
-  .day-name {
-    font-weight: bold;
-  }
-
-  .time {
-    font-size: 10px;
-  }
-
-  /* Navigation buttons */
-  .buttons {
-    display: flex;
-    justify-content: space-between;
-    margin: 15px 0;
-    gap: 10px;
-  }
-
-  .buttons button {
-    flex: 1;
-    padding: 10px;
-    background: #522398;
-    color: #fff;
-    border: none;
-    border-radius: 50px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-  }
-
-  /* Custom Leaflet icons */
-  .custom-icon {
-    display: flex;
-    align-items: center;
-  }
-
-  /* Responsive adjustments */
-  @media (max-height: 600px) {
-    .locations-slider {
-      height: 100px;
-    }
-    
-    .location-card {
-      width: 100px;
-      padding: 5px;
-    }
-  }
-
-  @media (min-aspect-ratio: 4/3) {
-  .mobile-container {
+  
+  .desktop-layout {
     flex-direction: row;
   }
-
-  .filters-panel {
-    width: 300px;
-    height: 100vh;
-    position: relative;
-    overflow-y: auto;
-    border-right: 1px solid #ccc;
+  
+  .mobile-layout {
+    flex-direction: column;
   }
-
-  .map-container {
-    flex: 1;
-    height: 100vh;
-  }
-
-  .locations-slider {
-    position: static;
-    height: auto;
+  
+  .sidebar {
+    background: #f5f5f5;
+    display: flex;
     flex-direction: column;
     overflow-y: auto;
-    width: 300px;
-    border-right: 1px solid #ccc;
+    z-index: 10;
   }
-
-  .detail-view {
-    flex: 1;
+  
+  .desktop-layout .sidebar {
+    width: 350px;
+    height: 100%;
+    border-right: 1px solid #ddd;
+  }
+  
+  .mobile-layout .sidebar {
+    width: 100%;
+    max-height: 70vh;
+  }
+  
+  .mobile-toggles {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    background: #e0e0e0;
+  }
+  
+  .toggle-button {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    padding: 5px 15px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  
+  .locations-list {
+    padding: 10px;
     overflow-y: auto;
-    padding: 20px;
   }
-}
+  
+  .locations-list h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+  
+  .map-container {
+    flex: 1;
+    height: 100%;
+    position: relative;
+  }
+  
+  .with-details {
+    position: relative;
+  }
+  
+  .no-results, .loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+  }
+  
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+  
+  /* Desktop specific styles */
+  @media (min-width: 769px) {
+    .mobile-toggles {
+      display: none;
+    }
+  }
+  
+  /* Mobile specific styles */
+  @media (max-width: 768px) {
+    .sidebar:not(.expanded) {
+      max-height: 40px;
+    }
+  }
 </style>

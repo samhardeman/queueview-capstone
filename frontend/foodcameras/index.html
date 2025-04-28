@@ -1,13 +1,121 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FoodCameras</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Location Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/mobile.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar with filters and locations -->
+        <div class="sidebar">
+            <!-- Mobile filter tabs -->
+            <div class="mobile-header">
+                <button id="open-filter" class="mobile-toggle">Open/Closed</button>
+                <button id="busyness-filter" class="mobile-toggle">Busyness</button>
+                <button id="tags-filter" class="mobile-toggle">Tags</button>
+                <button id="rating-filter" class="mobile-toggle">Rating</button>
+                <button id="quality-filter" class="mobile-toggle">Quality</button>
+                <button id="wait-filter" class="mobile-toggle">Wait Time</button>
+                <button id="reset-all" class="mobile-toggle">Reset All</button>
+            </div>
+            
+            <!-- Filters panel -->
+            <div id="filters-panel" class="filters-panel">
+                <div class="filters-header">
+                    <h2>Filters</h2>
+                    <button id="reset-filters" class="reset-button">Reset All</button>
+                </div>
+                
+                <form id="filters-form">
+                    <!-- Open/closed filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Show Open Only</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="open-only">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    
+                    <!-- Busyness levels filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Busyness Levels</label>
+                        <div class="busyness-buttons">
+                            <input type="checkbox" id="level-empty" checked class="visually-hidden">
+                            <label for="level-empty" class="busyness-button level-empty">Empty</label>
+                            
+                            <input type="checkbox" id="level-low" checked class="visually-hidden">
+                            <label for="level-low" class="busyness-button level-low">Low</label>
+                            
+                            <input type="checkbox" id="level-medium" checked class="visually-hidden">
+                            <label for="level-medium" class="busyness-button level-medium">Medium</label>
+                            
+                            <input type="checkbox" id="level-high" checked class="visually-hidden">
+                            <label for="level-high" class="busyness-button level-high">High</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Tags filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Tags</label>
+                        <div id="tags-container" class="tags-container">
+                            <!-- Tags will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Star rating filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Minimum Rating</label>
+                        <div class="stars-filter" id="stars-filter">
+                            <input type="hidden" id="min-stars" value="0">
+                            <button type="button" class="star-button" data-value="1">★</button>
+                            <button type="button" class="star-button" data-value="2">★</button>
+                            <button type="button" class="star-button" data-value="3">★</button>
+                            <button type="button" class="star-button" data-value="4">★</button>
+                            <button type="button" class="star-button" data-value="5">★</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Quality filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Minimum Quality</label>
+                        <div class="slider-container">
+                            <input type="range" id="min-quality" min="0" max="5" value="0" step="1">
+                            <span id="min-quality-value">0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Wait time filter -->
+                    <div class="filter-section">
+                        <label class="filter-label">Maximum Wait Time (min)</label>
+                        <div class="slider-container">
+                            <input type="range" id="max-turnaround" min="5" max="60" value="60" step="5">
+                            <span id="max-turnaround-value">60</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Locations list -->
+            <div id="locations-list" class="locations-list expanded">
+                <!-- Locations will be populated by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Map container -->
+        <div id="map" class="map-container"></div>
+        
+        <!-- Details panel (initially hidden) -->
+        <div id="details-panel" class="details-panel">
+            <!-- Details will be populated by JavaScript -->
+        </div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="/js/app.js"></script>
+</body>
 </html>

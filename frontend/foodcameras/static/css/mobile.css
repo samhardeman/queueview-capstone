@@ -1,0 +1,172 @@
+/* Mobile styles */
+@media (max-width: 768px) {
+    .container {
+      flex-direction: column;
+      position: relative;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .sidebar {
+      width: 100%;
+      height: auto;
+      flex-direction: column;
+      border-right: none;
+      position: absolute;
+      z-index: 20;
+    }
+    
+    /* Mobile header with filter tabs that scroll horizontally */
+    .mobile-header {
+      display: flex;
+      padding: 10px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      z-index: 20;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    
+    .mobile-toggle {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 20px; /* More rounded corners */
+      padding: 8px 16px;
+      margin-right: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-block;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: all 0.2s ease;
+    }
+    
+    .mobile-toggle:hover {
+      background: #e0e0e0;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    
+    .mobile-toggle.active {
+      background: #4CAF50;
+      color: white;
+      border-color: #4CAF50;
+      box-shadow: 0 2px 8px rgba(76,175,80,0.3);
+    }
+    
+    /* Filter panel that expands when clicked */
+    .filters-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      position: absolute;
+      top: 50px;
+      left: 0;
+      right: 0;
+      background: #f5f5f5;
+      z-index: 20;
+      border-bottom: 1px solid #ddd;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .filters-panel.expanded {
+      max-height: calc(100vh - 180px - 50px); /* Adjust to prevent overlapping with footer */
+      overflow-y: auto;
+      padding-bottom: 10px; /* Add padding to prevent content being cut off */
+    }
+    
+    /* Locations list always visible at the bottom */
+    .locations-list {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #f5f5f5;
+      display: flex;
+      flex-direction: row;
+      overflow-x: auto;
+      padding: 10px;
+      height: 130px;
+      border-top: 1px solid #ddd;
+      z-index: 20;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Make location cards scroll horizontally on mobile */
+    .locations-list .locations-count {
+      position: absolute;
+      top: -30px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #444;
+      border: none;
+      margin: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    
+    .locations-list .location-card {
+      min-width: 200px;
+      margin-right: 10px;
+      margin-bottom: 0;
+      flex-shrink: 0;
+      border-radius: 12px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      border: 1px solid #e0e0e0;
+      background: white;
+      transition: transform 0.2s ease;
+    }
+    
+    .locations-list .location-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .locations-list .location-card.selected {
+      border-color: #4CAF50;
+      box-shadow: 0 0 0 2px rgba(76,175,80,0.3);
+    }
+    
+    /* Map container takes full viewport minus header and locations bar */
+    .map-container {
+      position: absolute;
+      top: 50px;
+      left: 0;
+      right: 0;
+      bottom: 130px;
+      height: calc(100% - 180px);
+      width: 100%;
+      z-index: 10;
+    }
+    
+    /* Details panel slides up from bottom */
+    .details-panel {
+      width: 100%;
+      height: 80%;
+      bottom: 0;
+      top: auto;
+      transform: translateY(100%);
+      z-index: 30;
+    }
+    
+    .details-panel.visible {
+      transform: translateY(0);
+    }
+    
+    /* Filter section toggles */
+    .filter-section {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    
+    .filter-section:last-child {
+      border-bottom: none;
+    }
+  }
